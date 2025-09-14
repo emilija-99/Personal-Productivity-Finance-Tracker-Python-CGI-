@@ -6,13 +6,24 @@ A lightweight Python CGI web application that demonstrates core full-stack conce
 - CRUD operations (POST, GET, PUT, DELETE) for Calendar, Todo, Notes, and Finance tracking
 SQLite database schema with simple relations
 
-#### Features
-[] Register with username/email/password (hashed with bcrypt)
-[] Login and maintain session with secure cookies
-[] Logout clears session
-[] Calendar -> Create, edit, delete events, Mark events as Active or NonActive
-[] Todo List -> Add todos with text and date, Update status (Todo, Done, Delay). Delete items
-[] Note -> Write quick notes, View history by month
-[] Finance Tracker - Add income (Saving) or expense (Spending), Assign categories to finance entries, Edit or delete entries, Monthly summary of saving vs. spending
+## Features
 
- 
+- [ ] Register with username/email/password (hashed with bcrypt)  
+- [ ] Login and maintain session with secure cookies  
+- [ ] Logout clears session  
+- [ ] **Calendar**  
+  - Create, edit, delete events  
+  - Mark events as *Active* or *NonActive*  
+- [ ] **Todo List**  
+  - Add todos with text and date  
+  - Update status (*Todo, Done, Delay*)  
+  - Delete items  
+- [ ] **Notes**  
+  - Write quick notes  
+  - View history by month  
+- [ ] **Finance Tracker**  
+  - Add income (*Saving*) or expense (*Spending*)  
+  - Assign categories to finance entries  
+  - Edit or delete entries  
+  - Monthly summary of saving vs. spending  
+
