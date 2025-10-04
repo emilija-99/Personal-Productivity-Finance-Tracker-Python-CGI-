@@ -22,4 +22,3 @@ SQLite database schema with simple relations
 - [ ] Logout and remove session from table
 
 
->>>>>>> 16bd3878f434993e37553af11a75b8fba02e520c
