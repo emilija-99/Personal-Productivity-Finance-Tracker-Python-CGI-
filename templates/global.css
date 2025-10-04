@@ -1,0 +1,120 @@
+*{
+    font-family: 'Gill Sans', 'Gill Sans MT', Calibri, 'Trebuchet MS', sans-serif;
+}
+.div-centered{
+    display: flex;
+    flex-direction: column;
+    text-align: center;
+}
+a{
+    text-decoration: none;
+    color: black;
+}
+
+button{
+    cursor: pointer;
+    padding: 4px 8px;
+    margin-top: 5px;
+    border: none;
+    background-color: #009879;
+    color: white;
+    border-radius: 5px;
+    font-size: 16px;
+}
+
+.white{
+    background-color: white;
+    color: #009879;
+    border: 1px solid #163517;
+}
+
+button:hover{
+    cursor: pointer;
+    box-shadow: 1px 1px 2px grey;
+}
+
+.card{
+    background-color: white;
+    padding: 10px;
+    border-radius: 5px;
+    box-shadow: 1px 1px 5px grey;
+    margin: 10px;
+    width: 300px;
+}
+
+input[type="text"], input[type='email'], input[type="password"], input[type="number"], input[type="date"], select, textarea {
+    width: 30%;
+    padding: 3px;
+    margin: 8px 0;
+    box-sizing: border-box;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+.center {
+  margin: auto;
+  width: 10%;
+  padding: 10px;
+}
+
+.nav{
+    list-style: circle;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.nav li a{
+    font-size: 18px;
+    color: #163517;
+}
+
+.nav li a:hover{
+    text-decoration: underline;
+    color: #009879;
+}
+
+h1, h2, h3, h4{
+    color: #163517;
+    font-size: larger;
+    padding: 0;
+    font-weight: normal;
+}
+
+div-user-info{
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    text-align: left;
+}
+
+p{
+    margin: 5px;
+    padding-left: 10px;
+}
+
+.main-h1{
+    text-align: center;
+    color: #163517;
+    font-size: x-large;
+}
+
+.styled-table {
+    border: 1px solid #dddddd;
+    border-collapse: separate;
+    margin: 25px 0;
+    font-size: 1rem;
+    min-width: 400px;
+    border-radius: 5px;
+
+}
+
+.styled-table  tr th {
+    background-color: #009879;
+    color: #ffffff;
+    text-align: left;
+    padding: 5px 10px;
+    border-radius: 5px;
+}
+
+.row{
+    margin-left: 20px;
+}
