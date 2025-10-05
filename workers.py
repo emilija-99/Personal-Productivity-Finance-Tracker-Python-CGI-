@@ -96,53 +96,55 @@ def admin_add_form():
     )
 
 def render_page(user_role: str | None):
-    workers = get_all_workers()
-    css_block = """
-    .user-information { display: %s; }
-    """ % ("block" if user_role != "admin" else "none")
+    if user_role != 'user':
+        workers = get_all_workers()
+        diff_style = "<style>.user_info { height:900px; }</style>"
+        if user_role == "admin":
+            diff_style = "<style>.user_info { height:800px; }</style>"
 
-    print("Content-Type: text/html")
-    print()
-    print(f"""<html>
-<head>
-  <title>Workers Info</title>
-  <link rel="stylesheet" href="./templates/global.css">
-  <meta charset="utf-8">
-  <style>{css_block}</style>
-</head>
-<body>
-  <h1 style="margin-left:20px">Workers in ZABAC</h1>""")
 
-    if user_role == "admin":
-        admin_add_form()
+        print("Content-Type: text/html")
+        print()
+        print(f"""<html>
+    <head>
+    <title>Workers Info</title>
+    <link rel="stylesheet" href="./templates/global.css">
+        {diff_style}
+    <meta charset="utf-8">
+    </head>
+    <body>
+    <h1 style="margin-left:20px">Workers in ZABAC</h1>""")
 
-    print("""<div style="margin-left:20px">
-      <table class="styled-table">
-        <tr>
-          <th>ID</th><th>Username</th><th>Email</th><th>Role</th><th>Actions</th>
-        </tr>""")
+        if user_role == "admin":
+            admin_add_form()
 
-    if not workers:
-        print("""<tr><td colspan="5" style="text-align:center;color:#666;">No workers found.</td></tr>""")
-    else:
-        for w in workers:
-            wid   = html.escape(str(w["id"]))
-            uname = html.escape(w["username"] or "")
-            email = html.escape(w["email"] or "")
-            wrole = html.escape(w["role"] or "")
-            print(f"""<tr>
-  <td>{wid}</td><td>{uname}</td><td>{email}</td><td>{wrole}</td>
-  <td>
-    <form method="POST" action="" style="margin:0">
-      <input type="hidden" name="action" value="delete_worker">
-      <input type="hidden" name="id" value="{wid}">
-      <input type="submit" value="Cancellation"
-             onclick="return confirm('Are you sure you want to cancellation this worker?');">
-    </form>
-  </td>
-</tr>""")
+        print("""<div style="margin-left:20px">
+        <table class="styled-table">
+            <tr>
+            <th>ID</th><th>Username</th><th>Email</th><th>Role</th><th>Actions</th>
+            </tr>""")
 
-    print("""</table></div></body></html>""")
+        if not workers:
+            print("""<tr><td colspan="5" style="text-align:center;color:#666;">No workers found.</td></tr>""")
+        else:
+            for w in workers:
+                wid   = html.escape(str(w["id"]))
+                uname = html.escape(w["username"] or "")
+                email = html.escape(w["email"] or "")
+                wrole = html.escape(w["role"] or "")
+                print(f"""<tr>
+    <td>{wid}</td><td>{uname}</td><td>{email}</td><td>{wrole}</td>
+    <td>
+        <form method="POST" action="" style="margin:0">
+        <input type="hidden" name="action" value="delete_worker">
+        <input type="hidden" name="id" value="{wid}">
+        <input type="submit" value="Cancellation"
+                onclick="return confirm('Are you sure you want to cancellation this worker?');">
+        </form>
+    </td>
+    </tr>""")
+
+        print("""</table></div></body></html>""")
 
 # ---------- controller ----------
 def __main__():
@@ -159,28 +161,32 @@ def __main__():
     urow = conn.execute("SELECT role FROM users WHERE id = ?", (user_id,)).fetchone()
     user_role = urow["role"] if urow else None
 
-    form = cgi.FieldStorage()
-    method = os.environ.get("REQUEST_METHOD", "GET").upper()
+    if(user_role != 'user'):
+        form = cgi.FieldStorage()
+        method = os.environ.get("REQUEST_METHOD", "GET").upper()
 
-    if method == "POST" and user_role == "admin":
-        action = (form.getfirst("action") or "").strip()
-        if action == "add_worker":
-            username = (form.getfirst("username") or "").strip()
-            email    = (form.getfirst("email") or "").strip()
-            role_val = (form.getfirst("role_val") or "").strip()   # avoid shadowing
-            password = form.getfirst("password") or ""
-            add_worker(username, email, role_val, password)  # will redirect
-            return
-        elif action == "delete_worker":
-            worker_id = (form.getfirst("id") or "").strip()
-            delete_worker(worker_id)  # will redirect
-            return
-        else:
-            # Unknown POST -> just hard refresh to GET
-            redirect(script_self())
+        if method == "POST" and user_role == "admin":
+            action = (form.getfirst("action") or "").strip()
+            if action == "add_worker":
+                username = (form.getfirst("username") or "").strip()
+                email    = (form.getfirst("email") or "").strip()
+                role_val = (form.getfirst("role_val") or "").strip()   # avoid shadowing
+                password = form.getfirst("password") or ""
+                add_worker(username, email, role_val, password)  # will redirect
+                return
+            elif action == "delete_worker":
+                worker_id = (form.getfirst("id") or "").strip()
+                delete_worker(worker_id)  # will redirect
+                return
+            else:
+                # Unknown POST -> just hard refresh to GET
+                redirect(script_self())
 
-    # GET (or non-admin): render
-    render_page(user_role)
+        # GET (or non-admin): render
+        render_page(user_role)
+    else:
+        print("Content-type: html/text")
+        print()
 
 __main__()
 try:

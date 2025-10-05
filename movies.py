@@ -125,16 +125,57 @@ def show_admin_content():
     print(f"""<table class='styled-table'><thead><tr><th>Title</th><th>Year</th><th>Genre</th><th>Description</th><th>Available</th></tr></thead><tbody>""")
 
     for row in rows:
-        print(f"<tr><td>{html.escape(row['title'])}</td><td>{html.escape(str(row['year']))}</td><td>{html.escape(row['genre'])}</td><td>{html.escape(row['description'])}</td><td>{'Yes' if int(row['available'])==1 else 'No'}</td></tr>")
+        available = int(row['available'])
+        print(f"""
+        <tr>
+        <td>{html.escape(row['title'])}</td>
+        <td>{html.escape(str(row['year']))}</td>
+        <td>{html.escape(row['genre'])}</td>
+        <td>{html.escape(row['description'])}</td>
+        <td>{'Yes' if available > 1 else 'No'}</td>
+        <td>
+           <form method="POST" action="">
+              <input type="hidden" name="action" value="inc_available">
+              <input type="hidden" name="movie_id" value="{row['movie_id']}">
+              <button type="submit">+1 Available</button>
+            </form>
+        </td>
+        </tr>""")
+
     print("</tbody></table>")
+
+def user_options(selected_id=None):
+    sql_list_of_users = """SELECT u.*
+FROM users u
+LEFT JOIN movies_booking mb
+  ON mb.customer_id = u.id
+ AND mb.status = 'booked'
+WHERE u.role = 'user'
+GROUP BY u.id
+HAVING COUNT(mb.id) < 2;"""
+    cursor = conn.cursor()
+    cursor.execute(sql_list_of_users)
+    list_of_users = cursor.fetchall()
+
+    return "".join(
+        f'<option value="{u["id"]}"{" selected" if selected_id and u["id"]==selected_id else ""}>{esc(u["username"])}</option>'
+        for u in list_of_users
+    )
+
+def user_field_for(current_role, current_user_id):
+    if current_role in ("admin", "worker"):
+        # assumes you have user_options(list_of_users) elsewhere
+        return f'<label>User:</label> <select name="user_id">{user_options(current_user_id)}</select>'
+    return f'<input type="hidden" name="user_id" value="{current_user_id}"/>'
 
 def show_all_users_and_their_movies():
     rows = conn.execute("""
         SELECT
             u.id            AS user_id,
             u.username      AS username,
+            mb.customer_id  AS customer_id,  
             mb.status       AS booking_status,
-            mb.movie_id    AS movie_id,
+            mb.movie_id     AS movie_id,
             m.name          AS movie_title,
             m.available     AS available
         FROM users u
@@ -179,6 +220,8 @@ def show_all_users_and_their_movies():
         """)
     script_url = os.environ.get("SCRIPT_NAME", "../movies.py")
 
+    
+
     for r in rows:
         username = esc(r["username"])
         movie_title = esc(r["movie_title"]) if r["movie_title"] else '<span class="muted">—</span>'
@@ -188,22 +231,26 @@ def show_all_users_and_their_movies():
             else ('<span class="muted">—</span>' if status == "" else esc(status))
         )
 
-        # Build the "Book Movies" cell
-        # Rule: enabled only when user is NOT booked; options = movies.available >= 1
         can_book = (status != "booked") and len(available_movies) > 0
         action_name = "book" if role in ("admin", "member", "worker") else "book_movie_for_user"
         print(f"<!-- Can book? {can_book}, status: {esc(status)}, available_movies: {len(available_movies)} -->")
         print(f"<!-- Action name: {action_name}, role: {role} -->")
+        current_row_user_id = r["user_id"]
+        action_name = "book_movie_for_user" if role in ("admin", "worker") else "book"
+
+        # Book cell
         if can_book:
-            options = "".join(
+            movie_opts = "".join(
                 f'<option value="{m["id"]}">{esc(m["name"])}</option>'
                 for m in available_movies
             )
+            user_selector = user_field_for(role, current_row_user_id)
             book_cell = f"""
             <form method="POST" action="{esc(script_url)}" class="actions">
             <input type="hidden" name="action" value="{esc(action_name)}"/>
-            <input type="hidden" name="user_id" value="{r['user_id']}"/>
-            <select name="movie_id">{options}</select>
+            {user_selector}
+            <label>Movie:</label>
+            <select name="movie_id">{movie_opts}</select>
             <button type="submit">Book</button>
             </form>
             """
@@ -211,18 +258,20 @@ def show_all_users_and_their_movies():
             reason = "already booked" if status == "booked" else "no movies available"
             book_cell = f'<span class="muted">Cannot book ({esc(reason)})</span>'
 
-        # Unbook cell (only if booked)
-        if status == "booked" and r["movie_id"]:
+        # Unbook cell
+        if status == "booked" and (r["movie_id"] is not None) and (r["customer_id"] is not None):
             unbook_cell = f"""
             <form method="POST" action="{esc(script_url)}" class="actions">
-              <input type="hidden" name="action" value="unbook"/>
-              <input type="hidden" name="user_id" value="{r['user_id']}"/>
-              <input type="hidden" name="movie_id" value="{r['movie_id']}"/>
-              <button type="submit">Unbook</button>
+                <input type="hidden" name="action" value="unbook"/>
+                <input type="hidden" name="movie_id" value="{r['movie_id']}"/>
+                <input type="hidden" name="user_id"  value="{r['customer_id']}"/>
+                <button type="submit">Unbook</button>
             </form>
             """
         else:
             unbook_cell = '<span class="muted">—</span>'
+
+
 
 
         print(f"""
@@ -243,9 +292,9 @@ def show_all_users_and_their_movies():
     </html>
     """)
 
-def show_user_content():
+def show_user_content(user_id):
     print("<h1>User Content</h1>")
-    user_id = session_id
+    user_id = user_id
     if user_id is None:
         print("<p>Please log in.</p>")
         return
@@ -511,7 +560,7 @@ def show_add_movies(form):
         </select><br><br>
 
         <label for="available">Available:</label><br>
-        <input id="available" type="number" name="available" min="0" value="{available}" placeholder="1"><br><br>
+        <input id="available" type="number" name="available" min="1" value="{available}" placeholder="1"><br><br>
 
         <button type="submit">Add movie</button>
       </form>
@@ -613,9 +662,13 @@ def __main__():
             # handle_logout should call redirect() when done
             handle_logout()
             # if handle_logout doesn't redirect, fallback:
-
+        elif  action == "inc_available":
+                    movie_id_raw = form.getfirst("movie_id")
+                    cur = conn.cursor()
+                    cur.execute("UPDATE movies SET available = available + 1 WHERE id = ?", (movie_id_raw,))
+                    conn.commit()
+                    redirect(os.environ.get("SCRIPT_NAME", "/Zabac/movies.py"))
         else:
-            # booking/unbooking actions
             user_id = (form.getfirst("user_id") or "").strip()
             movie_id = (form.getfirst("movie_id") or "").strip()
 
@@ -629,6 +682,7 @@ def __main__():
                     book_movie(int(user_id), int(movie_id))
                 elif action == "unbook":
                     unbook_movie(int(user_id), int(movie_id))
+                
                 # Successful POST -> redirect to self (PRG)
                 redirect(os.environ.get("SCRIPT_NAME", "/Zabac/movies.py"))
             except Exception as e:
@@ -654,7 +708,7 @@ def __main__():
                 show_admin_content()
                 show_all_users_and_their_movies()
             else:
-                show_user_content()
+                show_user_content(user_row['id'])
         except Exception as e:
             bad_request(f"Render error: {e}")
         print("</body></html>")
@@ -665,7 +719,6 @@ def __main__():
     form = cgi.FieldStorage()
 
     method = (os.environ.get("REQUEST_METHOD") or "GET").upper()
-    print("method",method)
     if method == "POST" and (form.getfirst("action") == "add_movie"):
         ok, msg = insert_movie(form)
         if ok:

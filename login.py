@@ -27,7 +27,7 @@ def redirect(url, set_cookies=None, status="303 See Other"):
 form = cgi.FieldStorage()
 username = (form.getvalue('username') or '').strip()
 password = (form.getvalue('password') or '')
-remember = form.getvalue('remember')  
+remember = (form.getvalue('remember') or 'off').strip()  
 
 if not username or not password:
     redirect(f"{LOGIN_URL}?error=missing")
