@@ -6,16 +6,25 @@ cgitb.enable()
 print("Content-Type: text/html\n")
 
 conn = getConnection()
+
+# from cookies use session_id
 session_id = (os.environ.get('HTTP_COOKIE') or '').split('session_id=')[-1].split(';')[0].strip()
-# print("session id: ", session_id);
-def getUserInfo(id):
+
+# get current session based on sessiond_id and get user data
+def get_user_info(session_id):
+# get session
     cur = conn.cursor()
-    cur.execute("SELECT * FROM users WHERE id = ?", (id,))
+    cur.execute("SELECT * FROM session WHERE sid = ?", (session_id,))
+    row = cur.fetchone()
+
+    user_id = row['user_id']
+# get user
+    cur.execute("SELECT * FROM users WHERE id = ?", (user_id,))
     row = cur.fetchone()
     return row
 
 def __main__():
-    user = getUserInfo(session_id)
+    user = get_user_info(session_id)
     if not user:
         print("<h1>User not found</h1>")
         return

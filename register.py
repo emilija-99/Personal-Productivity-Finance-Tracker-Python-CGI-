@@ -1,7 +1,7 @@
 #!C:/Users/Emilija/AppData/Local/Programs/Python/Python311/python.exe
 import sys, cgi, cgitb, bcrypt, sqlite3, datetime
 from db import getConnection
- 
+import re
 
 cgitb.enable()
 
@@ -9,9 +9,36 @@ ERROR_URL   = "http://localhost/Web-programiranje-1/Zabac/templates/register.htm
 SUCCESS_URL = "http://localhost/Web-programiranje-1/Zabac/templates/login.html"
 
 def out_header():
-    print("ERROR.")
+    print("ERROR:")
+
+def html_header(status=None):
+    if status:
+        print(f"Status: {status}")
+    print("Content-Type: text/html; charset=utf-8")
+    print()
+
 def redirect(url):
     sys.stdout.write(f"Location: {url}\r\n\r\n")
+
+def validate_inputs(username, email, password, confirm):
+    errors = []
+
+    if not (username and email and password and confirm):
+        errors.append("All fields are required.")
+
+    if password != confirm:
+        errors.append("Passwords do not match.")
+
+    # At least 8, at most 20, at least one digit, at least one special char
+    special_rx = re.compile(r'[@_!#$%^&*()<>?/\|}{~:\-\+=\[\];.,]')
+    if not (8 <= len(password) <= 20):
+        errors.append("Password length must be between 8 and 20 characters.")
+    if not re.search(r'\d', password or ""):
+        errors.append("Password must contain at least one digit.")
+    if not special_rx.search(password or ""):
+        errors.append("Password must contain at least one special character.")
+
+    return errors
 def __main__():
     form = cgi.FieldStorage()
 
@@ -19,27 +46,30 @@ def __main__():
     email    = (form.getvalue('email') or '').strip()
     password = form.getvalue('password') or ''
     confirm  = form.getvalue('password_confirm') or ''
-
-    # Validate and exit early on failure
-    if not (username and email and password and confirm):
-        out_header()
-        print("<p style='color:red'>Error: All fields are required</p>")
-        sys.exit(0)
-
-    if password != confirm:
-        out_header()
-        print("<p style='color:red'>Error: Passwords do not match</p>")
-        sys.exit(0)
+    
+    errors = validate_inputs(username, email, password, confirm)
+    if errors:
+        html_header("400 Bad Request")
+        print("<h3 style='color:#b00'>Registration error</h3>")
+        print("<ul>")
+        for e in errors:
+            print(f"<li>{e}</li>")
+        print("</ul>")
+        print(f"<p><a href='{ERROR_URL}'>Back to register</a></p>")
+        return 
 
     conn = getConnection()
     cur = conn.cursor()
 
-    # Uniqueness check
+    # Check if this username and email exipist in DB already
     cur.execute("SELECT 1 FROM users WHERE username = ? OR email = ? LIMIT 1", (username, email))
     if cur.fetchone() is not None:
-        # Use your existing helper to send a 303 redirect
-        sys.exit(0)
+        html_header("409 Conflict")
+        print("<p style='color:#b00'>Username or email already exists.</p>")
+        print(f"<p><a href='{ERROR_URL}'>Back</a></p>")
+        return
 
+    # encript password using bcrypt
     pw_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
     created_at = datetime.datetime.now().isoformat(timespec='seconds')
 

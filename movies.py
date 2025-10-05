@@ -1,5 +1,6 @@
 #!C:/Users/Emilija/AppData/Local/Programs/Python/Python311/python.exe
 import os, cgitb, sqlite3, html, sys
+from urllib.parse import quote
 from http import cookies
 from db import getConnection
 from datetime import datetime
@@ -8,16 +9,80 @@ cgitb.enable()
 ALLOWED_GENRES = {"Sci-Fi", "Crime", "Drama", "Action"}
 NOW_YEAR = datetime.now().year
 
-print("Content-Type: text/html")
-print()
+
 
 conn = getConnection()
 conn.row_factory = sqlite3.Row
+LOGIN_URL = "http://localhost/Web-programiranje-1/Zabac/templates/login.html"
 
 session_id = None  
 role = None     
+def get_cookie(name: str):
+    raw = os.environ.get("HTTP_COOKIE", "")
+    for part in raw.split(";"):
+        if "=" in part:
+            k, v = part.strip().split("=", 1)
+            if k == name:
+                return v
+    return None
 
-def getSession():
+def clear_cookie_headers(name="session_id"):
+    if names is None:
+        names = ["session_id"]
+    headers = []
+    for n in names:
+        if n == "session_id":
+            headers.append(f"{n}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax")
+        else:
+            headers.append(f"{n}=; Path=/; Max-Age=0; SameSite=Lax")
+    return headers
+
+def redirect(url, set_cookies=None):
+    sys.stdout.write("Status: 303 See Other\r\n")
+    sys.stdout.write(f"Location: {url}\r\n")
+    sys.stdout.write("Cache-Control: no-store\r\n")
+    if set_cookies:
+        for h in set_cookies:
+            # each h should be like "name=value; Path=/; ..."
+            sys.stdout.write(f"Set-Cookie: {h}\r\n")
+    sys.stdout.write("\r\n")
+    raise SystemExit       # stop now; prevents duplicate output
+
+def create_logout_button():
+    # Simple POST form
+    print("""
+    <form method="post" action="" style="display:inline;">
+      <input type="hidden" name="action" value="logout">
+      <button type="submit" class="btn btn-logout">Logout</button>
+    </form>
+    """)
+def redirect_logout(url, set_cookies=None, status="303 See Other"):
+    # IMPORTANT: do NOT print Content-Type here.
+    sys.stdout.write(f"Status: {status}\r\n")
+    sys.stdout.write("Cache-Control: no-store\r\n")
+    if set_cookies:
+        for h in set_cookies:
+            sys.stdout.write(f"Set-Cookie: {h}\r\n")
+    sys.stdout.write(f"Location: {url}\r\n\r\n")
+    raise SystemExit
+def handle_logout():
+    sid = get_cookie("session_id")
+    cur = conn.cursor()
+    # Resolve user_id from current session id
+    cur.execute("SELECT user_id FROM session WHERE sid = ?", (sid,))
+    row = cur.fetchone()
+    if row:
+        user_id = row["user_id"]
+        # delete all sessions for this user
+        cur.execute("DELETE FROM session WHERE user_id = ?", (user_id,))
+        conn.commit()
+
+    redirect(
+            LOGIN_URL + "?logged_out=1",
+            set_cookies=clear_cookie_headers(names=["session_id", "username"])
+        )
+
+def get_session():
     global session_id
     
     raw_cookie = os.environ.get('HTTP_COOKIE', '')
@@ -33,6 +98,14 @@ def getSession():
         else:
             session_id = None
 
+    sql = "SELECT * from session where sid = ?"
+    cur = conn.cursor()
+    sid_value = sid.value 
+    cur.execute(sql, (sid_value,))
+    row = cur.fetchone()
+
+    return row['user_id']
+    
 def esc(x):
     return html.escape("" if x is None else str(x))
 
@@ -85,6 +158,7 @@ def show_all_users_and_their_movies():
         <html>
         <head>
         <meta charset="utf-8"/>
+
         <link rel="stylesheet" href="./templates/global.css">
         <title>Users & Movie Bookings</title>
         </head>
@@ -401,11 +475,18 @@ def book_movie_for_user(user_id: int, movie_id: int):
 
 def show_add_movies(form):
     # set form fields 
-    name        = (form.getfirst("name") or "").strip()
-    description = (form.getfirst("description") or "").strip()
-    year        = (form.getfirst("year") or "").strip()
-    genre       = (form.getfirst("genre") or "").strip()
-    available   = (form.getfirst("available") or "").strip()
+    if form == None:
+        name        = ""
+        description = ""
+        year        = ""
+        genre       = ""
+        available   = ""
+    else:
+        name        = (form.getfirst("name") or "").strip()
+        description = (form.getfirst("description") or "").strip()
+        year        = (form.getfirst("year") or "").strip()
+        genre       = (form.getfirst("genre") or "").strip()
+        available   = (form.getfirst("available") or "").strip()
 
     print(f"""<div>
       <form method="post" action="">
@@ -435,6 +516,7 @@ def show_add_movies(form):
         <button type="submit">Add movie</button>
       </form>
     </div>""")
+
 
 def insert_movie(form):
     # get form values
@@ -511,13 +593,59 @@ def insert_movie(form):
     return True, f"Movie added successfully (id={movie_id})."
 
 def __main__():
-    getSession()
+    import cgi
+    form = cgi.FieldStorage()
+    method = (os.environ.get("REQUEST_METHOD") or "GET").upper()
+
+    # Handle POST actions BEFORE any output so redirects send proper HTTP headers
+    if method == "POST":
+        action = (form.getfirst("action") or "").strip().lower()
+
+        if action == "add_movie":
+            ok, msg = insert_movie(form)
+            if ok:
+                redirect(os.environ.get("SCRIPT_NAME", "/Zabac/movies.py"))
+            else:
+                # fall through to render page and display the error
+                error_html = f"<div style='color:red'>{esc(msg)}</div>"
+
+        elif action == "logout":
+            # handle_logout should call redirect() when done
+            handle_logout()
+            # if handle_logout doesn't redirect, fallback:
+
+        else:
+            # booking/unbooking actions
+            user_id = (form.getfirst("user_id") or "").strip()
+            movie_id = (form.getfirst("movie_id") or "").strip()
+
+            if not (user_id.isdigit() and movie_id.isdigit()):
+                redirect(os.environ.get("SCRIPT_NAME", "/Zabac/movies.py") + "?err=invalid_ids")
+
+            try:
+                if action == "book_movie_for_user":
+                    book_movie_for_user(int(user_id), int(movie_id))
+                elif action == "book":
+                    book_movie(int(user_id), int(movie_id))
+                elif action == "unbook":
+                    unbook_movie(int(user_id), int(movie_id))
+                # Successful POST -> redirect to self (PRG)
+                redirect(os.environ.get("SCRIPT_NAME", "/Zabac/movies.py"))
+            except Exception as e:
+                # redirect with an error message (or handle otherwise)
+                redirect(os.environ.get("SCRIPT_NAME", "/Zabac/movies.py") + "?err=" + quote(str(e)))
+
+    # No redirect happened -> render page (safe to print headers/body)
+    print("Content-Type: text/html")
+    print()
+    session_id = get_session()
+    session_id = get_session()
 
     if session_id is not None:
         user_row = get_user(session_id)
         if not user_row:
             return bad_request("User not found or session invalid")
-
+        
         global role
         role = user_row['role']
         print("<!DOCTYPE html><html><head><link rel='stylesheet' href='./templates/global.css'><meta charset='utf-8'><title>Movies</title></head><body>")
@@ -537,15 +665,20 @@ def __main__():
     form = cgi.FieldStorage()
 
     method = (os.environ.get("REQUEST_METHOD") or "GET").upper()
-
+    print("method",method)
     if method == "POST" and (form.getfirst("action") == "add_movie"):
         ok, msg = insert_movie(form)
-        color = "green" if ok else "red"
-        print(f"<div style='color:{color};margin:8px 0'>{esc(msg)}</div>")
-        if ok and role == 'admin':
-            show_add_movies()
+        if ok:
+            redirect(os.environ.get("SCRIPT_NAME", "/Zabac/movies.py"))  # no prints before this
+        else:
+            # now you can print headers+HTML to show the error
+            print("Content-Type: text/html\r\n")
+            print(f"<div style='color:red'>{esc(msg)}</div>")
+        
     elif role == 'admin':
         show_add_movies(form)
+    elif method == "POST" and (form.getfirst("action") == "logout"):
+            handle_logout()
 
     if os.environ.get("REQUEST_METHOD", "GET").upper() == "POST":
         action   = (form.getfirst("action") or "").strip().lower()

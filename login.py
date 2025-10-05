@@ -1,7 +1,7 @@
 #!C:/Users/Emilija/AppData/Local/Programs/Python/Python311/python.exe
-import sys, cgi, cgitb, bcrypt, sqlite3
+import sys, cgi, cgitb, bcrypt, sqlite3, secrets
 from db import getConnection
-
+import urllib.parse
 cgitb.enable()
 
 LOGIN_URL = "http://localhost/Web-programiranje-1/Zabac/templates/login.html"
@@ -23,16 +23,16 @@ def redirect(url, set_cookies=None, status="303 See Other"):
     sys.stdout.flush()
     raise SystemExit
 
+
 form = cgi.FieldStorage()
 username = (form.getvalue('username') or '').strip()
 password = (form.getvalue('password') or '')
-remember = form.getvalue('remember')  # 'on' or None
+remember = form.getvalue('remember')  
 
 if not username or not password:
     redirect(f"{LOGIN_URL}?error=missing")
 
 conn = getConnection()
-# conn.row_factory = sqlite3.Row
 cur = conn.cursor()
 
 # FETCH USER
@@ -40,18 +40,33 @@ cur.execute("SELECT id, username, password_hash FROM users WHERE username = ?", 
 row = cur.fetchone()
 
 if not row or not bcrypt.checkpw(password.encode('utf-8'), row['password_hash'].encode('utf-8')):
-    redirect(f"{LOGIN_URL}?error=invalid")
-
-# GET USER ID AND SET SESSION
+    print("Content-Type: text/html; charset=utf-8")
+    print()
+    print(f"""
+    <html>
+    <head><title>Login Failed</title></head>
+    <body>
+      <p style="color:red">Invalid username or password!</p>
+      <a href="{LOGIN_URL}">Try again</a>
+    </body>
+    </html>
+    """)
+    conn.close()
+    raise SystemExit
+    
 user_id = row['id']
 
+# create data for inserting session into db
 now = sqlite3.datetime.datetime.now().isoformat()
 expire = sqlite3.datetime.datetime.now() + sqlite3.datetime.timedelta(days=30)
-cur.execute("INSERT INTO session (user_id, expires_at, created_at) VALUES (?, ?, ?)", (user_id, expire, now))
+sid = secrets.token_urlsafe(32)
+
+cur.execute("INSERT INTO session (sid, user_id, expires_at, created_at, remember) VALUES (?, ?, ?, ?, ?)", (sid, user_id, expire, now,  1 if remember else 0))
 conn.commit()
 
-# SET COOKIES
+# set username and session_id into cookies
 cookies = [make_cookie("username", username, max_age=30*24*3600) if remember == 'on' else make_cookie("username", username)]
-cookies.append(make_cookie("session_id", str(user_id), max_age=30*24*3600 if remember == 'on' else None))
+cookies.append(make_cookie("session_id", str(sid), max_age=30*24*3600 if remember == 'on' else None))
+
 redirect(HOME_URL, set_cookies=cookies)
 conn.close()
