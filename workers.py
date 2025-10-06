@@ -7,7 +7,10 @@ cgitb.enable()
 conn = getConnection()
 conn.row_factory = sqlite3.Row
 
+# --- helpers -------------------------------------------------
+
 def redirect(url, set_cookies=None):
+    # IMPORTANT: call this BEFORE sending any Content-Type/blank line
     sys.stdout.write("Status: 303 See Other\r\n")
     sys.stdout.write(f"Location: {url}\r\n")
     sys.stdout.write("Cache-Control: no-store\r\n")
@@ -18,7 +21,8 @@ def redirect(url, set_cookies=None):
     raise SystemExit
 
 def script_self():
-    return os.environ.get("SCRIPT_NAME", "/Zabac/workers.py")
+    # Use the real mount path as fallback to avoid /Zabac mismatch
+    return os.environ.get("SCRIPT_NAME", "/Web-programiranje-1/Zabac/workers.py")
 
 def get_cookie(name: str):
     raw = os.environ.get("HTTP_COOKIE", "")
@@ -28,6 +32,8 @@ def get_cookie(name: str):
             if k == name:
                 return v
     return None
+
+# --- data ops ------------------------------------------------
 
 def get_all_workers():
     cur = conn.cursor()
@@ -39,33 +45,31 @@ def delete_worker(worker_id: str):
         return "Missing worker ID."
     _conn = getConnection()
     try:
-        cur = _conn.cursor()
-        cur.execute("DELETE FROM users WHERE id = ?", (worker_id,))
-        _conn.commit()
+        with _conn:
+            _conn.execute("DELETE FROM users WHERE id = ?", (worker_id,))
     finally:
         try: _conn.close()
         except: pass
-    redirect(script_self())  
+    redirect(script_self())  # no output happened yet -> safe
 
 def add_worker(username: str, email: str, role_val: str, password: str):
     if not (username and email and role_val and password):
         return "Missing required fields."
-
     pw_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
     _conn = getConnection()
     try:
-        cur = _conn.cursor()
-        cur.execute(
-            "INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, ?)",
-            (username, email, pw_hash, role_val),
-        )
-        _conn.commit()
+        with _conn:
+            _conn.execute(
+                "INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, ?)",
+                (username, email, pw_hash, role_val),
+            )
     finally:
         try: _conn.close()
         except: pass
-    redirect(script_self()) 
+    redirect(script_self())  # no output happened yet -> safe
 
-# ---------- UI ----------
+# --- UI ------------------------------------------------------
+
 def admin_add_form():
     print(
         """<div style="margin-left:20px">
@@ -93,33 +97,34 @@ def admin_add_form():
     )
 
 def render_page(user_role: str | None):
-    
+    # NOW we send headers, because we know we’re rendering HTML
+    print("Content-Type: text/html")
+    print()
+
     if user_role != 'user':
         workers = get_all_workers()
         diff_style = "<style>.user_info { height:900px; }</style>"
         if user_role == "admin":
             diff_style = "<style>.user_info { height:800px; }</style>"
 
-
-        
         print(f"""<html>
-    <head>
-    <title>Workers Info</title>
-    <link rel="stylesheet" href="./templates/global.css">
-        {diff_style}
-    <meta charset="utf-8">
-    </head>
-    <body>
-    <h1 style="margin-left:20px">Workers in ZABAC</h1>""")
-        
+<head>
+  <title>Workers Info</title>
+  <link rel="stylesheet" href="./templates/global.css">
+  {diff_style}
+  <meta charset="utf-8">
+</head>
+<body>
+  <h1 style="margin-left:20px">Workers in ZABAC</h1>""")
+
         if user_role == "admin":
             admin_add_form()
 
         print("""<div style="margin-left:20px">
-        <table class="styled-table">
-            <tr>
-            <th>ID</th><th>Username</th><th>Email</th><th>Role</th><th>Actions</th>
-            </tr>""")
+<table class="styled-table">
+  <tr>
+    <th>ID</th><th>Username</th><th>Email</th><th>Role</th><th>Actions</th>
+  </tr>""")
 
         if not workers:
             print("""<tr><td colspan="5" style="text-align:center;color:#666;">No workers found.</td></tr>""")
@@ -129,24 +134,29 @@ def render_page(user_role: str | None):
                 uname = html.escape(w["username"] or "")
                 email = html.escape(w["email"] or "")
                 wrole = html.escape(w["role"] or "")
-                print(f"""<tr>
-    <td>{wid}</td><td>{uname}</td><td>{email}</td><td>{wrole}</td>
-    <td>
-        <form method="POST" action="" style="margin:0">
-        <input type="hidden" name="action" value="delete_worker">
-        <input type="hidden" name="id" value="{wid}">
-        <input type="submit" value="Cancellation"
-                onclick="return confirm('Are you sure you want to cancellation this worker?');">
-        </form>
-    </td>
-    </tr>""")
+                if(user_role == 'admin'):
+                    print(f"""<tr>
+  <td>{wid}</td><td>{uname}</td><td>{email}</td><td>{wrole}</td>
+  <td>
+    <form method="POST" action="" style="margin:0">
+      <input type="hidden" name="action" value="delete_worker">
+      <input type="hidden" name="id" value="{wid}">
+      <input type="submit" value="Cancellation"
+             onclick="return confirm('Are you sure you want to cancellation this worker?');">
+    </form>
+  </td>
+</tr>""")
+                else:
+                    print(f"""<tr>
+  <td>{wid}</td><td>{uname}</td><td>{email}</td><td>{wrole}</td>
+  </tr>""")
 
         print("""</table></div></body></html>""")
 
+# --- main ----------------------------------------------------
+
 def __main__():
-    print("Content-Type: text/html")
-    print()
-    # check if sid exists and get user
+    # DO NOT print Content-Type here. We might redirect.
     sid = get_cookie("session_id")
     if not sid:
         redirect("/Web-programiranje-1/Zabac/templates/login.html")
@@ -159,30 +169,30 @@ def __main__():
     urow = conn.execute("SELECT role FROM users WHERE id = ?", (user_id,)).fetchone()
     user_role = urow["role"] if urow else None
 
-    if(user_role != 'user'):
-        form = cgi.FieldStorage()
-        method = os.environ.get("REQUEST_METHOD", "GET").upper()
+    form = cgi.FieldStorage()
+    method = os.environ.get("REQUEST_METHOD", "GET").upper()
 
-        if method == "POST" and user_role == "admin":
-            action = (form.getfirst("action") or "").strip()
-            if action == "add_worker":
-                username = (form.getfirst("username") or "").strip()
-                email    = (form.getfirst("email") or "").strip()
-                role_val = (form.getfirst("role_val") or "").strip()   # avoid shadowing
-                password = form.getfirst("password") or ""
-                add_worker(username, email, role_val, password)  # will redirect
-                return
-            elif action == "delete_worker":
-                worker_id = (form.getfirst("id") or "").strip()
-                delete_worker(worker_id)  # will redirect
-                return
-            else:
-                # Unknown POST -> just hard refresh to GET
-                redirect(script_self())
+    # Handle POST first, before sending any output
+    if method == "POST" and user_role == "admin":
+        action = (form.getfirst("action") or "").strip()
+        if action == "add_worker":
+            username = (form.getfirst("username") or "").strip()
+            email    = (form.getfirst("email") or "").strip()
+            role_val = (form.getfirst("role_val") or "").strip()
+            password = form.getfirst("password") or ""
+            add_worker(username, email, role_val, password)  # redirects
+            return
+        elif action == "delete_worker":
+            worker_id = (form.getfirst("id") or "").strip()
+            delete_worker(worker_id)  # redirects
+            return
+        else:
+            # Unknown POST -> hard refresh to GET
+            redirect(script_self())
 
-        # GET (or non-admin): render
-        render_page(user_role)
-    
+    # GET (or non-admin): render UI
+    render_page(user_role)
+
 __main__()
 try:
     conn.close()
