@@ -4,7 +4,6 @@ from db import getConnection
 
 cgitb.enable()
 
-# ---------- infra ----------
 conn = getConnection()
 conn.row_factory = sqlite3.Row
 
@@ -19,7 +18,6 @@ def redirect(url, set_cookies=None):
     raise SystemExit
 
 def script_self():
-    # absolute path is fine too; SCRIPT_NAME is usually '/Zabac/workers.py'
     return os.environ.get("SCRIPT_NAME", "/Zabac/workers.py")
 
 def get_cookie(name: str):
@@ -31,7 +29,6 @@ def get_cookie(name: str):
                 return v
     return None
 
-# ---------- data ops ----------
 def get_all_workers():
     cur = conn.cursor()
     cur.execute("SELECT id, username, email, role FROM users WHERE role = 'worker'")
@@ -48,7 +45,7 @@ def delete_worker(worker_id: str):
     finally:
         try: _conn.close()
         except: pass
-    redirect(script_self())  # hard refresh after POST
+    redirect(script_self())  
 
 def add_worker(username: str, email: str, role_val: str, password: str):
     if not (username and email and role_val and password):
@@ -66,7 +63,7 @@ def add_worker(username: str, email: str, role_val: str, password: str):
     finally:
         try: _conn.close()
         except: pass
-    redirect(script_self())  # hard refresh after POST
+    redirect(script_self()) 
 
 # ---------- UI ----------
 def admin_add_form():
@@ -96,6 +93,7 @@ def admin_add_form():
     )
 
 def render_page(user_role: str | None):
+    
     if user_role != 'user':
         workers = get_all_workers()
         diff_style = "<style>.user_info { height:900px; }</style>"
@@ -103,8 +101,7 @@ def render_page(user_role: str | None):
             diff_style = "<style>.user_info { height:800px; }</style>"
 
 
-        print("Content-Type: text/html")
-        print()
+        
         print(f"""<html>
     <head>
     <title>Workers Info</title>
@@ -114,7 +111,7 @@ def render_page(user_role: str | None):
     </head>
     <body>
     <h1 style="margin-left:20px">Workers in ZABAC</h1>""")
-
+        
         if user_role == "admin":
             admin_add_form()
 
@@ -146,9 +143,10 @@ def render_page(user_role: str | None):
 
         print("""</table></div></body></html>""")
 
-# ---------- controller ----------
 def __main__():
-    # auth
+    print("Content-Type: text/html")
+    print()
+    # check if sid exists and get user
     sid = get_cookie("session_id")
     if not sid:
         redirect("/Web-programiranje-1/Zabac/templates/login.html")
@@ -184,10 +182,7 @@ def __main__():
 
         # GET (or non-admin): render
         render_page(user_role)
-    else:
-        print("Content-type: html/text")
-        print()
-
+    
 __main__()
 try:
     conn.close()
